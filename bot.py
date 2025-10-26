@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from yt_dlp import YoutubeDL
+from yt_dlp import yt-dlp
 import json
 
 load_dotenv()
