@@ -271,8 +271,12 @@ async def on_ready():
                 "📻 `/cbs음악fm` : CBS 음악FM 재생\n"
                 "🎧 `/youtube_play` : URL 링크 이용 유튜브 링크 재생\n"
                 "🎧 `/youtube_검색` : 키워드 검색어 이용 재생/검색 후 첫 영상을 재생함\n"
-                "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
-                "👂 음성 수신 비활성(Deafened) 상태로 작동"
+                "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n\n"
+                "👂 음성 수신 비활성(Deafened) 상태로 작동\n\n\n"
+                "📡✨ 라디오봇 Youtube Play 오류시\n"
+                "🎶 뽀삐 명령어 사용\n\n"
+                "🎧 /재생 [링크] : YouTube 링크 재생\n\n"
+                "⭐ 모든 봇 실행할 때는 명렁어상 아이콘 확인 후 실행"
             )
             mark_initialized(GUILD_ID)
 
