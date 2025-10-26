@@ -217,7 +217,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
 
 
 # ──────────────── 정지 + 메시지 삭제 ────────────────
-@tree.command(name="STOP", description="재생 중지 + 음성채널 퇴장")
+@tree.command(name="스탑", description="재생 중지 + 음성채널 퇴장")
 async def stop_radio(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_connected():
@@ -270,7 +270,7 @@ async def on_ready():
                 "📻 `/cbs음악fm` : CBS 음악FM 재생\n"
                 "🎧 `/youtube_URL` : URL 링크 이용 유튜브 링크 재생\n"
                 "🎧 `/youtube_검색` : 키워드 검색어 이용 재생/검색 후 첫 영상을 재생함\n"
-                "⛔ `/STOP` : 재생 중지 + 음성채널 퇴장\n"
+                "⛔ `/스탑` : 재생 중지 + 음성채널 퇴장\n"
                 "👂 음성 수신 비활성(Deafened) 상태로 작동"
             )
             mark_initialized(GUILD_ID)
