@@ -20,13 +20,18 @@ RADIO_URLS = {
     "cbs_music": "https://m-aac.cbs.co.kr/mweb_cbs939/_definst_/cbs939.stream/chunklist.m3u8"
 }
 
+# ────────────── 클라이언트 & 커맨드 트리 ──────────────
 intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
+intents.messages = True  # 메시지 삭제를 위해 필요
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-FFMPEG_OPTIONS = {'options': '-vn'}
+FFMPEG_OPTIONS = {
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'options': '-vn'
+}
 
 # ────────────── 첫 실행 체크 ──────────────
 FIRST_RUN_FILE = "first_run.json"
@@ -165,6 +170,22 @@ async def stop_radio(interaction: discord.Interaction):
         await interaction.response.send_message("🤔 재생 중이 아니에요!", ephemeral=True)
         await asyncio.sleep(10)
         await interaction.delete_original_response()
+
+# ────────────── 음성 채널 떠날 때 메시지 삭제 ──────────────
+@client.event
+async def on_voice_state_update(member, before, after):
+    # 봇이 음성채널에서 나갔을 때
+    if member == client.user:
+        if before.channel and (after.channel != before.channel):
+            channel = client.get_channel(CHANNEL_ID)
+            if channel:
+                try:
+                    pinned_messages = [msg.id async for msg in channel.pins()]
+                    async for msg in channel.history(limit=None):
+                        if msg.id not in pinned_messages:
+                            await msg.delete()
+                except Exception as e:
+                    print(f"❌ 메시지 삭제 실패: {e}")
 
 # ────────────── 봇 준비 이벤트 ──────────────
 @client.event
