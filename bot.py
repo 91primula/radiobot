@@ -25,7 +25,7 @@ RADIO_URLS = {
 intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
-intents.messages = True  # 메시지 삭제 위해 필요
+intents.messages = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -95,7 +95,7 @@ async def sbs_power(interaction: discord.Interaction):
 async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
-# ────────────── YouTube 링크 재생 ──────────────
+# ────────────── 유튜브 링크 재생 ──────────────
 @tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
@@ -122,7 +122,7 @@ async def youtube_play(interaction: discord.Interaction, url: str):
     await asyncio.sleep(10)
     await interaction.delete_original_response()
 
-# ────────────── YouTube 검색 재생 ──────────────
+# ────────────── 유튜브 검색 재생 ──────────────
 @tree.command(name="youtube_search", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
@@ -189,19 +189,24 @@ async def on_ready():
         print(f"❌ 서버를 찾을 수 없습니다. GUILD_ID 확인 필요: {GUILD_ID}")
         return
 
-    # ────────────── 길드 명령어 강제 재등록 ──────────────
+    # ────────────── 기존 명령어 삭제 + 강제 동기화 ──────────────
     try:
+        # 기존 명령어 삭제
         for cmd in await tree.fetch_commands(guild=guild):
             await cmd.delete()
         print("✅ 기존 명령어 삭제 완료")
+
+        # 새 명령어 동기화
         await tree.sync(guild=guild)
         print("✅ Slash Commands 강제 동기화 완료")
     except Exception as e:
         print(f"❌ 명령어 동기화 실패: {e}")
 
+    # 등록된 명령어 확인
     for cmd in await tree.fetch_commands(guild=guild):
         print("Registered command:", cmd.name)
 
+    # 최초 실행 메시지
     if check_first_run(GUILD_ID):
         channel = guild.get_channel(CHANNEL_ID)
         if channel:
