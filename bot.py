@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 import yt_dlp
 
+# ────────────── 환경 변수 ──────────────
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID"))
@@ -20,11 +21,11 @@ RADIO_URLS = {
     "cbs_music": "https://m-aac.cbs.co.kr/mweb_cbs939/_definst_/cbs939.stream/chunklist.m3u8"
 }
 
-# ────────────── 클라이언트 & 커맨드 트리 ──────────────
+# ────────────── 디스코드 클라이언트 ──────────────
 intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
-intents.messages = True  # 메시지 삭제를 위해 필요
+intents.messages = True  # 메시지 삭제 위해 필요
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -60,15 +61,8 @@ async def play_audio(interaction: discord.Interaction, url: str, name: str):
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
             return
-        try:
-            channel = interaction.user.voice.channel
-            voice = await channel.connect(self_deaf=True)
-        except discord.Forbidden:
-            await interaction.response.send_message("❌ 봇에게 음성채널 접속 권한이 없습니다!", ephemeral=True)
-            return
-        except discord.ClientException as e:
-            await interaction.response.send_message(f"❌ 음성채널 연결 실패: {e}", ephemeral=True)
-            return
+        channel = interaction.user.voice.channel
+        voice = await channel.connect(self_deaf=True)
     if voice.is_playing():
         voice.stop()
     try:
@@ -101,7 +95,7 @@ async def sbs_power(interaction: discord.Interaction):
 async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
-# ────────────── YouTube URL 재생 ──────────────
+# ────────────── YouTube 링크 재생 ──────────────
 @tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
@@ -129,7 +123,7 @@ async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.delete_original_response()
 
 # ────────────── YouTube 검색 재생 ──────────────
-@tree.command(name="youtube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
+@tree.command(name="youtube_search", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
     voice = interaction.guild.voice_client
@@ -174,7 +168,6 @@ async def stop_radio(interaction: discord.Interaction):
 # ────────────── 음성 채널 떠날 때 메시지 삭제 ──────────────
 @client.event
 async def on_voice_state_update(member, before, after):
-    # 봇이 음성채널에서 나갔을 때
     if member == client.user:
         if before.channel and (after.channel != before.channel):
             channel = client.get_channel(CHANNEL_ID)
@@ -195,8 +188,17 @@ async def on_ready():
     if not guild:
         print(f"❌ 서버를 찾을 수 없습니다. GUILD_ID 확인 필요: {GUILD_ID}")
         return
-    await tree.sync(guild=guild)
-    print("✅ Slash Commands Synced")
+
+    # ────────────── 길드 명령어 강제 재등록 ──────────────
+    try:
+        for cmd in await tree.fetch_commands(guild=guild):
+            await cmd.delete()
+        print("✅ 기존 명령어 삭제 완료")
+        await tree.sync(guild=guild)
+        print("✅ Slash Commands 강제 동기화 완료")
+    except Exception as e:
+        print(f"❌ 명령어 동기화 실패: {e}")
+
     for cmd in await tree.fetch_commands(guild=guild):
         print("Registered command:", cmd.name)
 
@@ -212,7 +214,7 @@ async def on_ready():
                 "📻 `/sbs파워fm` : SBS 파워FM 재생\n"
                 "📻 `/cbs음악fm` : CBS 음악FM 재생\n"
                 "🎧 `/youtube_play` : 유튜브 링크 재생\n"
-                "🎧 `/youtube_검색` : 키워드 검색 자동 재생\n"
+                "🎧 `/youtube_search` : 키워드 검색 자동 재생\n"
                 "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
                 "👂 음성 수신 비활성(Deafened) 상태로 작동"
             )
