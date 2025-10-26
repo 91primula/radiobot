@@ -79,12 +79,11 @@ async def play_next(guild_id):
         asyncio.run_coroutine_threadsafe(play_next(guild_id), client.loop)
 
     if voice:
-        source = discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS)
-        player = voice.play(source, after=after_play)
-        # 볼륨 적용
         volume = guild_volume.get(guild_id, 1.0)
-        voice.source = discord.PCMVolumeTransformer(source, volume=volume)
+        source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS), volume=volume)
+        voice.play(source, after=after_play)
 
+# ────────────── 큐에 오디오 추가 ──────────────
 async def queue_audio(interaction: discord.Interaction, url: str, name: str):
     guild_id = interaction.guild.id
     if guild_id not in guild_queues:
@@ -94,7 +93,9 @@ async def queue_audio(interaction: discord.Interaction, url: str, name: str):
     voice = interaction.guild.voice_client
     if not voice:
         if interaction.user.voice is None:
-            await interaction.response.send_message("❌ 음성 채널에 먼저 들어가주세요!", ephemeral=True)
+            msg = await interaction.channel.send("❌ 음성 채널에 먼저 들어가주세요!")
+            await asyncio.sleep(5)
+            await msg.delete()
             return
         voice_channel = interaction.user.voice.channel
         voice = await voice_channel.connect(self_deaf=True)
@@ -102,23 +103,38 @@ async def queue_audio(interaction: discord.Interaction, url: str, name: str):
     if not voice.is_playing():
         await play_next(guild_id)
 
-    await interaction.response.send_message(f"🎵 '{name}' 큐에 추가 완료!", ephemeral=True)
+    msg = await interaction.channel.send(f"🎵 '{name}' 큐에 추가 완료!")
+    await asyncio.sleep(5)
+    await msg.delete()
 
+# ────────────── YouTube 재생 최적화 ──────────────
 async def play_youtube(interaction: discord.Interaction, url: str):
-    ydl_opts = {"format": "bestaudio"}
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        audio_url = info['url']
-        title = info.get('title', 'YouTube')
-    await queue_audio(interaction, audio_url, title)
+    ydl_opts = {"format": "bestaudio/best", "noplaylist": True}
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            audio_url = info['url']
+            title = info.get('title', 'YouTube')
+        await queue_audio(interaction, audio_url, title)
+    except Exception as e:
+        msg = await interaction.channel.send(f"❌ YouTube 재생 오류: {e}")
+        await asyncio.sleep(5)
+        await msg.delete()
 
 async def search_youtube(interaction: discord.Interaction, query: str):
-    ydl_opts = {"format": "bestaudio", "default_search": "ytsearch", "noplaylist": True}
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(query, download=False)['entries'][0]
-        audio_url = info['url']
-        title = info.get('title', 'YouTube')
-    await queue_audio(interaction, audio_url, title)
+    ydl_opts = {"format": "bestaudio/best", "noplaylist": True, "default_search": "ytsearch"}
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            if "entries" in info:
+                info = info['entries'][0]
+            audio_url = info['url']
+            title = info.get('title', 'YouTube')
+        await queue_audio(interaction, audio_url, title)
+    except Exception as e:
+        msg = await interaction.channel.send(f"❌ YouTube 검색 오류: {e}")
+        await asyncio.sleep(5)
+        await msg.delete()
 
 # ────────────── 라디오 명령어 ──────────────
 @tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
@@ -152,7 +168,7 @@ async def cmd_yt_play(interaction: discord.Interaction, url: str):
 async def cmd_yt_search(interaction: discord.Interaction, query: str):
     await search_youtube(interaction, query)
 
-# ────────────── 현재 재생곡 / 큐 확인 ──────────────
+# ────────────── 큐 확인 ──────────────
 @tree.command(name="queue", description="현재 재생곡과 대기열 확인")
 async def cmd_queue(interaction: discord.Interaction):
     guild_id = interaction.guild.id
@@ -161,7 +177,6 @@ async def cmd_queue(interaction: discord.Interaction):
 
     embed = discord.Embed(title="🎶 재생 상태", color=0x00ff00)
     embed.add_field(name="현재 재생중", value=current[1] if current else "없음", inline=False)
-
     if queue:
         queue_text = "\n".join([f"{i+1}. {name}" for i, (_, name) in enumerate(queue)])
         embed.add_field(name="대기열", value=queue_text, inline=False)
@@ -173,25 +188,33 @@ async def cmd_queue(interaction: discord.Interaction):
     embed.add_field(name="반복 모드", value=loop_status, inline=True)
     embed.add_field(name="볼륨", value=f"{int(volume*100)}%", inline=True)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    msg = await interaction.channel.send(embed=embed)
+    await asyncio.sleep(5)
+    await msg.delete()
 
-# ────────────── 반복 모드 토글 ──────────────
+# ────────────── 반복 모드 ──────────────
 @tree.command(name="loop", description="현재 곡 반복 모드 켜기/끄기")
 async def cmd_loop(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     guild_loop[guild_id] = not guild_loop.get(guild_id, False)
     status = "켜짐" if guild_loop[guild_id] else "꺼짐"
-    await interaction.response.send_message(f"🔁 반복 모드 {status}", ephemeral=True)
+    msg = await interaction.channel.send(f"🔁 반복 모드 {status}")
+    await asyncio.sleep(5)
+    await msg.delete()
 
-# ────────────── 스킵 명령어 ──────────────
+# ────────────── 스킵 ──────────────
 @tree.command(name="skip", description="현재 곡 스킵 후 다음 곡 재생")
 async def cmd_skip(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_playing():
         voice.stop()
-        await interaction.response.send_message("⏭ 현재 곡 스킵!", ephemeral=True)
+        msg = await interaction.channel.send("⏭ 현재 곡 스킵!")
+        await asyncio.sleep(5)
+        await msg.delete()
     else:
-        await interaction.response.send_message("❌ 현재 재생 중이 아닙니다!", ephemeral=True)
+        msg = await interaction.channel.send("❌ 현재 재생 중이 아닙니다!")
+        await asyncio.sleep(5)
+        await msg.delete()
 
 # ────────────── 볼륨 조절 ──────────────
 @tree.command(name="volume", description="재생 중인 음성 볼륨 조절")
@@ -204,7 +227,9 @@ async def cmd_volume(interaction: discord.Interaction, level: int):
     voice = interaction.guild.voice_client
     if voice and voice.source:
         voice.source.volume = guild_volume[guild_id]
-    await interaction.response.send_message(f"🔊 볼륨 {level}% 로 설정 완료", ephemeral=True)
+    msg = await interaction.channel.send(f"🔊 볼륨 {level}% 로 설정 완료")
+    await asyncio.sleep(5)
+    await msg.delete()
 
 # ────────────── 일시정지 / 재개 ──────────────
 @tree.command(name="pause", description="재생 중인 곡 일시정지")
@@ -212,20 +237,28 @@ async def cmd_pause(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_playing():
         voice.pause()
-        await interaction.response.send_message("⏸ 곡 일시정지", ephemeral=True)
+        msg = await interaction.channel.send("⏸ 곡 일시정지")
+        await asyncio.sleep(5)
+        await msg.delete()
     else:
-        await interaction.response.send_message("❌ 현재 재생 중이 아닙니다!", ephemeral=True)
+        msg = await interaction.channel.send("❌ 현재 재생 중이 아닙니다!")
+        await asyncio.sleep(5)
+        await msg.delete()
 
 @tree.command(name="resume", description="일시정지된 곡 재개")
 async def cmd_resume(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_paused():
         voice.resume()
-        await interaction.response.send_message("▶ 곡 재개", ephemeral=True)
+        msg = await interaction.channel.send("▶ 곡 재개")
+        await asyncio.sleep(5)
+        await msg.delete()
     else:
-        await interaction.response.send_message("❌ 현재 일시정지 상태가 아닙니다!", ephemeral=True)
+        msg = await interaction.channel.send("❌ 현재 일시정지 상태가 아닙니다!")
+        await asyncio.sleep(5)
+        await msg.delete()
 
-# ────────────── 정지 명령어 ──────────────
+# ────────────── 정지 ──────────────
 @tree.command(name="정지", description="재생 중지 및 음성 채널 나가기")
 async def cmd_stop(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
@@ -236,15 +269,18 @@ async def cmd_stop(interaction: discord.Interaction):
         guild_loop[interaction.guild.id] = False
         guild_volume[interaction.guild.id] = 1.0
         await voice.disconnect()
-        await interaction.response.send_message("🛑 재생 중지 및 음성 채널 나왔어요!", ephemeral=True)
+        msg = await interaction.channel.send("🛑 재생 중지 및 음성 채널 나왔어요!")
+        await asyncio.sleep(5)
+        await msg.delete()
     else:
-        await interaction.response.send_message("❌ 현재 재생 중이 아닙니다!", ephemeral=True)
+        msg = await interaction.channel.send("❌ 현재 재생 중이 아닙니다!")
+        await asyncio.sleep(5)
+        await msg.delete()
 
-# ────────────── 봇 시작 시 명령어 초기화 ──────────────
+# ────────────── 봇 시작 ──────────────
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
-
     guild = client.get_guild(GUILD_ID)
     if guild:
         await tree.sync(guild=guild)
