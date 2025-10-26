@@ -32,7 +32,8 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
-queues = {}  # {guild_id: [ {url, title}, ... ]}
+queues = {}         # {guild_id: [ {url, title}, ... ]}
+current_index = {}  # {guild_id: 현재 재생 중인 트랙 인덱스}
 
 FIRST_RUN_FILE = "first_run.json"
 
@@ -55,66 +56,46 @@ def mark_initialized(guild_id):
 
 # ──────────────── 버튼 UI 클래스 ────────────────
 class AudioControlView(discord.ui.View):
-    def __init__(self, voice: discord.VoiceClient, message: discord.Message, name: str, guild_id: int):
+    def __init__(self, voice, message, guild_id):
         super().__init__(timeout=None)
         self.voice = voice
         self.message = message
-        self.name = name
         self.guild_id = guild_id
 
-    async def update_message(self, status: str):
-        embed = discord.Embed(title=f"🎵 {self.name}", description=f"상태: {status}", color=0x1abc9c)
-        await self.message.edit(embed=embed, view=self)
+    @discord.ui.button(label="⏮ 이전", style=discord.ButtonStyle.blurple)
+    async def prev_button(self, interaction, button):
+        idx = current_index.get(self.guild_id, 0)
+        if idx > 0:
+            current_index[self.guild_id] = idx - 1
+            await play_track(interaction.guild, idx - 1)
+            await interaction.response.send_message(f"⏮ 이전곡 재생", ephemeral=True)
+        else:
+            await interaction.response.send_message("⛔ 이전곡이 없습니다.", ephemeral=True)
 
-    @discord.ui.button(label="재생", style=discord.ButtonStyle.green)
-    async def resume_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.voice and self.voice.is_paused():
+    @discord.ui.button(label="▶ 재생", style=discord.ButtonStyle.green)
+    async def resume_button(self, interaction, button):
+        if self.voice.is_paused():
             self.voice.resume()
-            await self.update_message("▶ 재생 중")
-            await interaction.response.send_message("▶ 재생 재개!", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
-        else:
-            await interaction.response.send_message("⛔ 재생 중이거나 연결되지 않았습니다.", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
+            await interaction.response.send_message("▶ 재생 재개", ephemeral=True)
 
-    @discord.ui.button(label="일시정지", style=discord.ButtonStyle.gray)
-    async def pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.voice and self.voice.is_playing():
+    @discord.ui.button(label="⏸ 일시정지", style=discord.ButtonStyle.gray)
+    async def pause_button(self, interaction, button):
+        if self.voice.is_playing():
             self.voice.pause()
-            await self.update_message("⏸ 일시정지")
-            await interaction.response.send_message("⏸ 일시정지!", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
+            await interaction.response.send_message("⏸ 일시정지", ephemeral=True)
+
+    @discord.ui.button(label="⏭ 다음", style=discord.ButtonStyle.blurple)
+    async def next_button(self, interaction, button):
+        idx = current_index.get(self.guild_id, 0)
+        if idx + 1 < len(queues.get(self.guild_id, [])):
+            current_index[self.guild_id] = idx + 1
+            await play_track(interaction.guild, idx + 1)
+            await interaction.response.send_message(f"⏭ 다음곡 재생", ephemeral=True)
         else:
-            await interaction.response.send_message("⛔ 재생 중이 아니거나 연결되지 않았습니다.", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
+            await interaction.response.send_message("⛔ 다음곡이 없습니다.", ephemeral=True)
 
-    @discord.ui.button(label="정지", style=discord.ButtonStyle.red)
-    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.voice and self.voice.is_connected():
-            self.voice.stop()
-            await self.voice.disconnect()
-            await self.update_message("⏹ 정지")
-            await interaction.response.send_message("🛑 재생 중지!", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
-
-            channel = client.get_channel(CHANNEL_ID)
-            if channel:
-                pinned = [msg.id async for msg in channel.pins()]
-                async for msg in channel.history(limit=None):
-                    if msg.id not in pinned:
-                        await msg.delete()
-        else:
-            await interaction.response.send_message("⛔ 재생 중이 아니거나 연결되지 않았습니다.", ephemeral=True)
-            await asyncio.sleep(5)
-            await interaction.delete_original_response()
-
-    @discord.ui.button(label="재생리스트", style=discord.ButtonStyle.blurple)
-    async def queue_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="📜 재생리스트", style=discord.ButtonStyle.secondary)
+    async def queue_button(self, interaction, button):
         q = queues.get(self.guild_id, [])
         if not q:
             desc = "다음 재생 예정이 없습니다."
@@ -122,29 +103,34 @@ class AudioControlView(discord.ui.View):
             desc = "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(q)])
         embed = discord.Embed(title="📜 재생 목록", description=desc, color=0xf1c40f)
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        await asyncio.sleep(10)
-        await interaction.delete_original_response()
 
-# ──────────────── 유튜브 전용 재생 함수 ────────────────
-async def play_next_track(guild):
+# ──────────────── 유튜브 재생 함수 ────────────────
+async def play_track(guild, index):
     guild_id = guild.id
-    voice = guild.voice_client
-    if not voice or not queues.get(guild_id):
+    if guild_id not in queues or not queues[guild_id]:
         return
-    next_track = queues[guild_id].pop(0)
-    source = discord.FFmpegOpusAudio(next_track["url"], **FFMPEG_OPTIONS)
+    current_index[guild_id] = index
+    track = queues[guild_id][index]
+
+    voice = guild.voice_client
+    if not voice:
+        return
+
+    source = discord.FFmpegOpusAudio(track["url"], **FFMPEG_OPTIONS)
+
     def after_play(error):
-        fut = asyncio.run_coroutine_threadsafe(play_next_track(guild), client.loop)
-        try:
+        next_idx = current_index.get(guild_id, 0) + 1
+        if next_idx < len(queues[guild_id]):
+            current_index[guild_id] = next_idx
+            fut = asyncio.run_coroutine_threadsafe(play_track(guild, next_idx), client.loop)
             fut.result()
-        except:
-            pass
+
     voice.play(source, after=after_play)
 
     # 메시지 + 버튼 UI 갱신
-    embed = discord.Embed(title=f"🎵 YouTube: {next_track['title']}", description="상태: ▶ 재생 중", color=0x1abc9c)
+    embed = discord.Embed(title=f"🎵 {track['title']}", description="상태: ▶ 재생 중", color=0x1abc9c)
     msg = await client.get_channel(CHANNEL_ID).send(embed=embed)
-    view = AudioControlView(voice, msg, next_track['title'], guild_id)
+    view = AudioControlView(voice, msg, guild_id)
     await msg.edit(view=view)
 
 async def enqueue_youtube(interaction, url, title):
@@ -159,36 +145,33 @@ async def enqueue_youtube(interaction, url, title):
         channel = interaction.user.voice.channel
         voice = await channel.connect(self_deaf=True)
 
+    # 재생 중이 아니라면 바로 재생
     if not voice.is_playing():
-        await play_next_track(interaction.guild)
+        await play_track(interaction.guild, len(queues[guild_id]) - 1)
 
-# ──────────────── 라디오 명령어 ────────────────
+# ──────────────── 라디오 명령어 예시 ────────────────
 @tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
 async def mbc_sfm(interaction: discord.Interaction):
     await interaction.response.defer()
-    await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
+    await play_radio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
 
-@tree.command(name="mbcfm4u", description="MBC FM4U 재생")
-async def mbc_fm4u(interaction: discord.Interaction):
-    await interaction.response.defer()
-    await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
+async def play_radio(interaction, url, name):
+    voice = interaction.guild.voice_client
+    if not voice:
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
+            return
+        voice = await interaction.user.voice.channel.connect(self_deaf=True)
+    if voice.is_playing():
+        voice.stop()
+    voice.play(discord.FFmpegOpusAudio(url, **FFMPEG_OPTIONS))
 
-@tree.command(name="sbs러브fm", description="SBS 러브FM 재생")
-async def sbs_love(interaction: discord.Interaction):
-    await interaction.response.defer()
-    await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
+    embed = discord.Embed(title=f"🎵 {name}", description="상태: ▶ 재생 중", color=0x1abc9c)
+    msg = await interaction.followup.send(embed=embed)
+    view = AudioControlView(voice, msg, interaction.guild.id)
+    await msg.edit(view=view)
 
-@tree.command(name="sbs파워fm", description="SBS 파워FM 재생")
-async def sbs_power(interaction: discord.Interaction):
-    await interaction.response.defer()
-    await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
-
-@tree.command(name="cbs음악fm", description="CBS 음악FM 재생")
-async def cbs_music(interaction: discord.Interaction):
-    await interaction.response.defer()
-    await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
-
-# ──────────────── 유튜브 재생 ────────────────
+# ──────────────── 유튜브 명령어 ────────────────
 @tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
@@ -221,9 +204,6 @@ async def youtube_search(interaction: discord.Interaction, query: str):
         await interaction.followup.send(f"❌ 검색 실패: {e}", ephemeral=True)
         return
     await enqueue_youtube(interaction, audio_url, title)
-
-
-
 
 # ──────────────── 정지 + 메시지 삭제 ────────────────
 @tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
@@ -279,6 +259,8 @@ async def on_ready():
                 "📻 `/cbs음악fm` : CBS 음악FM 재생\n"
                 "🎧 `/youtube_play` : 유튜브 링크 재생\n"
                 "🎧 `/youtube_검색` : 키워드 검색 자동 재생\n"
+                "⏮ ⏭ 이전/다음 곡 이동 가능\n"
+                "📜 재생리스트 버튼으로 큐 확인 가능\n"
                 "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
                 "👂 음성 수신 비활성(Deafened) 상태로 작동"
             )
