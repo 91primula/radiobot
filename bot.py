@@ -113,7 +113,7 @@ async def cmd_cbs_music(interaction: discord.Interaction):
 async def cmd_yt_play(interaction: discord.Interaction, url: str):
     await play_youtube(interaction, url)
 
-@tree.command(name="youyube_검색", description="YouTube 검색 후 자동 재생")
+@tree.command(name="youtube_검색", description="YouTube 검색 후 자동 재생")
 @app_commands.describe(query="검색어")
 async def cmd_yt_search(interaction: discord.Interaction, query: str):
     await search_youtube(interaction, query)
