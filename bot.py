@@ -162,7 +162,7 @@ async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
 # ──────────────── 유튜브 재생 ────────────────
-@tree.command(name="youtube_URL", description="URL 링크 이용 유튜브 링크 재생")
+@tree.command(name="youtube_링크", description="URL 링크 이용 유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
