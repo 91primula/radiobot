@@ -115,26 +115,29 @@ async def stop_radio(interaction: discord.Interaction):
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
-    guild = client.get_guild(GUILD_ID)
-    await tree.sync(guild=guild)
-    print("✅ Slash Commands Synced")
 
-    if check_first_run(GUILD_ID):
-        channel = guild.get_channel(CHANNEL_ID)
-        if channel:
-            await channel.send(
-                "📡✨ **라디오봇 접속 완료!**\n"
-                "🎶 음성 채널에 먼저 들어가신 후 아래 명령어를 사용해주세요!\n\n"
-                "▶ `/mbc표준fm` : MBC 표준FM 재생\n"
-                "▶ `/mbcfm4u` : MBC FM4U 재생\n"
-                "▶ `/sbs러브fm` : SBS 러브FM 재생\n"
-                "▶ `/sbs파워fm` : SBS 파워FM 재생\n"
-                "▶ `/cbs음악fm` : CBS 음악FM 재생\n"
-                "⛔ `/정지` : 라디오 재생 중지 + 음성채널 퇴장\n\n"
-                "👂 음성 수신은 비활성화 상태(Deafened)로 작동해요!\n"
-                "💡 언제든지 라디오와 함께 음악을 즐겨보세요!"
-            )
-            mark_initialized(GUILD_ID)
+    guild = client.get_guild(GUILD_ID)
+    if guild:
+        await tree.sync(guild=guild)
+        print("✅ Slash Commands Synced")
+
+        if check_first_run(GUILD_ID):
+            channel = guild.get_channel(CHANNEL_ID)
+            if channel:
+                await channel.send(
+                    "📡✨ **라디오봇 접속 완료!**\n"
+                    "🎶 음성 채널에 먼저 들어가신 후 아래 명령어를 사용해주세요!\n\n"
+                    "▶ `/mbc표준fm` : MBC 표준FM 재생\n"
+                    "▶ `/mbcfm4u` : MBC FM4U 재생\n"
+                    "▶ `/sbs러브fm` : SBS 러브FM 재생\n"
+                    "▶ `/sbs파워fm` : SBS 파워FM 재생\n"
+                    "▶ `/cbs음악fm` : CBS 음악FM 재생\n"
+                    "⛔ `/정지` : 라디오 재생 중지 + 음성채널 퇴장\n\n"
+                    "👂 음성 수신은 비활성화 상태(Deafened)로 작동해요!\n"
+                    "💡 언제든지 라디오와 함께 음악을 즐겨보세요!"
+                )
+                mark_initialized(GUILD_ID)
+
 
 
 client.run(TOKEN)
