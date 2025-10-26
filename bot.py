@@ -128,9 +128,14 @@ async def play_audio(interaction, url, name):
         await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
         return
 
-    # 기존 메시지 전송 + View 연결
+    # interaction defer → NotFound 오류 방지
+    try:
+        await interaction.response.defer()
+    except discord.errors.InteractionResponded:
+        pass
+
     embed = discord.Embed(title=f"🎵 {name}", description="상태: ▶ 재생 중", color=0x1abc9c)
-    await interaction.response.send_message(embed=embed, ephemeral=False)
+    await interaction.followup.send(embed=embed, ephemeral=False)
     message = await interaction.original_response()
     view = AudioControlView(voice, message, name)
     await message.edit(view=view)
@@ -205,7 +210,8 @@ async def youtube_search(interaction: discord.Interaction, query: str):
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
 
-# 나머지 정지/메시지 삭제/음성 상태 이벤트 등 기존 코드 그대로 유지
+# 나머지 기존 정지, 메시지 삭제, 음성 상태 이벤트 등 그대로 유지
+
 
 
 # ──────────────── 정지 + 메시지 삭제 ────────────────
