@@ -76,28 +76,28 @@ async def play_audio(interaction: discord.Interaction, url: str, name: str):
     await interaction.delete_original_response()
 
 # ────────────── 라디오 명령어 ──────────────
-@tree.command(name="mbc_sfm", description="MBC 표준FM 재생")
+@tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
 async def mbc_sfm(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
 
-@tree.command(name="mbc_fm4u", description="MBC FM4U 재생")
+@tree.command(name="mbcfm4u", description="MBC FM4U 재생")
 async def mbc_fm4u(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
 
-@tree.command(name="sbs_love", description="SBS 러브FM 재생")
+@tree.command(name="sbs러브fm", description="SBS 러브FM 재생")
 async def sbs_love(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
 
-@tree.command(name="sbs_power", description="SBS 파워FM 재생")
+@tree.command(name="sbs파워fm", description="SBS 파워FM 재생")
 async def sbs_power(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
 
-@tree.command(name="cbs_music", description="CBS 음악FM 재생")
+@tree.command(name="cbs음악fm", description="CBS 음악FM 재생")
 async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
 # ────────────── YouTube URL 재생 ──────────────
-@tree.command(name="yt_play", description="유튜브 링크 재생")
+@tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
     voice = interaction.guild.voice_client
@@ -124,7 +124,7 @@ async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.delete_original_response()
 
 # ────────────── YouTube 검색 재생 ──────────────
-@tree.command(name="yt_search", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
+@tree.command(name="youyube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
     voice = interaction.guild.voice_client
@@ -152,7 +152,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
     await interaction.delete_original_response()
 
 # ────────────── 정지 명령어 ──────────────
-@tree.command(name="stop", description="재생 중지 + 음성채널 퇴장")
+@tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
 async def stop_radio(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_connected():
@@ -185,14 +185,14 @@ async def on_ready():
             await channel.send(
                 "📡✨ **라디오봇 접속 완료!**\n"
                 "🎶 음성 채널에 들어간 후 아래 명령어 사용 가능\n\n"
-                "▶ `/mbc_sfm` : MBC 표준FM 재생\n"
-                "▶ `/mbc_fm4u` : MBC FM4U 재생\n"
-                "▶ `/sbs_love` : SBS 러브FM 재생\n"
-                "▶ `/sbs_power` : SBS 파워FM 재생\n"
-                "▶ `/cbs_music` : CBS 음악FM 재생\n"
-                "▶ `/yt_play` : 유튜브 링크 재생\n"
-                "▶ `/yt_search` : 키워드 검색 자동 재생\n"
-                "⛔ `/stop` : 재생 중지 + 음성채널 퇴장\n"
+                "▶ `/mbc표준fm` : MBC 표준FM 재생\n"
+                "▶ `/mbcfm4u` : MBC FM4U 재생\n"
+                "▶ `/sbs러브fm` : SBS 러브FM 재생\n"
+                "▶ `/sbs파워fm` : SBS 파워FM 재생\n"
+                "▶ `/cbs음악fm` : CBS 음악FM 재생\n"
+                "▶ `/youtube_play` : 유튜브 링크 재생\n"
+                "▶ `/youyube_검색` : 키워드 검색 자동 재생\n"
+                "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
                 "👂 음성 수신 비활성(Deafened) 상태로 작동"
             )
             mark_initialized(GUILD_ID)
