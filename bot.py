@@ -162,7 +162,7 @@ async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
 # ──────────────── 유튜브 재생 ────────────────
-@tree.command(name="youtube_링크", description="URL 링크 이용 유튜브 링크 재생")
+@tree.command(name="youtube_play", description="URL 링크 이용 유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
@@ -217,7 +217,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
 
 
 # ──────────────── 정지 + 메시지 삭제 ────────────────
-@tree.command(name="스탑", description="재생 중지 + 음성채널 퇴장")
+@tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
 async def stop_radio(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_connected():
@@ -268,9 +268,9 @@ async def on_ready():
                 "📻 `/sbs러브fm` : SBS 러브FM 재생\n"
                 "📻 `/sbs파워fm` : SBS 파워FM 재생\n"
                 "📻 `/cbs음악fm` : CBS 음악FM 재생\n"
-                "🎧 `/youtube_URL` : URL 링크 이용 유튜브 링크 재생\n"
+                "🎧 `/youtube_play` : URL 링크 이용 유튜브 링크 재생\n"
                 "🎧 `/youtube_검색` : 키워드 검색어 이용 재생/검색 후 첫 영상을 재생함\n"
-                "⛔ `/스탑` : 재생 중지 + 음성채널 퇴장\n"
+                "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
                 "👂 음성 수신 비활성(Deafened) 상태로 작동"
             )
             mark_initialized(GUILD_ID)
