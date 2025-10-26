@@ -1,10 +1,9 @@
 import os
 import asyncio
-import json
-from dotenv import load_dotenv
 import discord
 from discord import app_commands
-import yt_dlp
+from dotenv import load_dotenv
+from yt_dlp import YoutubeDL
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -21,15 +20,112 @@ RADIO_URLS = {
 }
 
 intents = discord.Intents.default()
-intents.guilds = True
-intents.voice_states = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-FFMPEG_OPTIONS = {'options': '-vn'}
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
 
-# ────────────── 첫 실행 체크 ──────────────
+# -------------------------------
+# 오디오 재생 함수
+# -------------------------------
+async def play_audio(interaction: discord.Interaction, url: str, name: str):
+    voice = interaction.guild.voice_client
+    if not voice:
+        if interaction.user.voice is None:
+            await interaction.response.send_message("❌ 음성 채널에 먼저 들어가주세요!", ephemeral=True)
+            return
+        voice_channel = interaction.user.voice.channel
+        voice = await voice_channel.connect(self_deaf=True)
+
+    if voice.is_playing():
+        voice.stop()
+
+    voice.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
+    msg = await interaction.response.send_message(f"🎵 {name} 재생 중!", ephemeral=True)
+    await asyncio.sleep(10)
+    await interaction.delete_original_response()
+
+# -------------------------------
+# YouTube 링크 재생
+# -------------------------------
+async def play_youtube(interaction: discord.Interaction, url: str):
+    ydl_opts = {"format": "bestaudio"}
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        audio_url = info['url']
+    await play_audio(interaction, audio_url, info.get('title', 'YouTube'))
+
+# -------------------------------
+# YouTube 검색 후 재생
+# -------------------------------
+async def search_youtube(interaction: discord.Interaction, query: str):
+    ydl_opts = {"format": "bestaudio", "default_search": "ytsearch", "noplaylist": True}
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=False)['entries'][0]
+        audio_url = info['url']
+    await play_audio(interaction, audio_url, info.get('title', 'YouTube'))
+
+# -------------------------------
+# 라디오 명령어
+# -------------------------------
+@tree.command(name="mbc_sfm", description="MBC 표준FM 재생")
+async def cmd_mbc_sfm(interaction: discord.Interaction):
+    await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
+
+@tree.command(name="mbc_fm4u", description="MBC FM4U 재생")
+async def cmd_mbc_fm4u(interaction: discord.Interaction):
+    await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
+
+@tree.command(name="sbs_love", description="SBS 러브FM 재생")
+async def cmd_sbs_love(interaction: discord.Interaction):
+    await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
+
+@tree.command(name="sbs_power", description="SBS 파워FM 재생")
+async def cmd_sbs_power(interaction: discord.Interaction):
+    await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
+
+@tree.command(name="cbs_music", description="CBS 음악FM 재생")
+async def cmd_cbs_music(interaction: discord.Interaction):
+    await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
+
+# -------------------------------
+# YouTube 명령어
+# -------------------------------
+@tree.command(name="ytplay", description="YouTube 링크 재생")
+@app_commands.describe(url="YouTube 영상 URL")
+async def cmd_yt_play(interaction: discord.Interaction, url: str):
+    await play_youtube(interaction, url)
+
+@tree.command(name="ytsearch", description="YouTube 검색 후 자동 재생")
+@app_commands.describe(query="검색어")
+async def cmd_yt_search(interaction: discord.Interaction, query: str):
+    await search_youtube(interaction, query)
+
+# -------------------------------
+# 정지 명령어
+# -------------------------------
+@tree.command(name="stop", description="라디오/YouTube 재생 중지 및 음성채널 나가기")
+async def cmd_stop(interaction: discord.Interaction):
+    voice = interaction.guild.voice_client
+    if voice and voice.is_connected():
+        voice.stop()
+        await voice.disconnect()
+        msg = await interaction.response.send_message("🛑 재생 중지 및 음성 채널에서 나왔어요!", ephemeral=True)
+        await asyncio.sleep(10)
+        await interaction.delete_original_response()
+    else:
+        msg = await interaction.response.send_message("❌ 현재 재생 중이 아닙니다!", ephemeral=True)
+        await asyncio.sleep(10)
+        await interaction.delete_original_response()
+
+# -------------------------------
+# 최초 접속 안내
+# -------------------------------
 FIRST_RUN_FILE = "first_run.json"
+import json
 
 def check_first_run(guild_id):
     if not os.path.exists(FIRST_RUN_FILE):
@@ -48,153 +144,31 @@ def mark_initialized(guild_id):
     with open(FIRST_RUN_FILE, "w") as f:
         json.dump(data, f)
 
-# ────────────── 음원 재생 함수 ──────────────
-async def play_audio(interaction: discord.Interaction, url: str, name: str):
-    voice = interaction.guild.voice_client
-    if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
-        try:
-            channel = interaction.user.voice.channel
-            voice = await channel.connect(self_deaf=True)
-        except discord.Forbidden:
-            await interaction.response.send_message("❌ 봇에게 음성채널 접속 권한이 없습니다!", ephemeral=True)
-            return
-        except discord.ClientException as e:
-            await interaction.response.send_message(f"❌ 음성채널 연결 실패: {e}", ephemeral=True)
-            return
-    if voice.is_playing():
-        voice.stop()
-    try:
-        voice.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
-    except discord.ClientException as e:
-        await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
-        return
-    await interaction.response.send_message(f"🎵 {name} 재생 중!", ephemeral=True)
-    await asyncio.sleep(10)
-    await interaction.delete_original_response()
-
-# ────────────── 라디오 명령어 ──────────────
-@tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
-async def mbc_sfm(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
-
-@tree.command(name="mbcfm4u", description="MBC FM4U 재생")
-async def mbc_fm4u(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
-
-@tree.command(name="sbs러브fm", description="SBS 러브FM 재생")
-async def sbs_love(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
-
-@tree.command(name="sbs파워fm", description="SBS 파워FM 재생")
-async def sbs_power(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
-
-@tree.command(name="cbs음악fm", description="CBS 음악FM 재생")
-async def cbs_music(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
-
-# ────────────── YouTube URL 재생 ──────────────
-@tree.command(name="youtube_play", description="유튜브 링크 재생")
-@app_commands.describe(url="재생할 유튜브 영상 링크")
-async def youtube_play(interaction: discord.Interaction, url: str):
-    voice = interaction.guild.voice_client
-    if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
-        channel = interaction.user.voice.channel
-        voice = await channel.connect(self_deaf=True)
-    if voice.is_playing():
-        voice.stop()
-    try:
-        ydl_opts = {'format': 'bestaudio/best', 'quiet': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info['url']
-            title = info.get('title','Unknown')
-    except Exception as e:
-        await interaction.response.send_message(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
-        return
-    voice.play(discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS))
-    await interaction.response.send_message(f"🎵 YouTube 재생 시작: {title}", ephemeral=True)
-    await asyncio.sleep(10)
-    await interaction.delete_original_response()
-
-# ────────────── YouTube 검색 재생 ──────────────
-@tree.command(name="youyube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
-@app_commands.describe(query="재생할 음악/영상 검색어")
-async def youtube_search(interaction: discord.Interaction, query: str):
-    voice = interaction.guild.voice_client
-    if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
-        channel = interaction.user.voice.channel
-        voice = await channel.connect(self_deaf=True)
-    if voice.is_playing():
-        voice.stop()
-    ydl_opts = {'format': 'bestaudio/best', 'quiet': True}
-    search_url = f"ytsearch1:{query}"
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_url, download=False)
-            audio_url = info['entries'][0]['url']
-            title = info['entries'][0].get('title','Unknown')
-    except Exception as e:
-        await interaction.response.send_message(f"❌ 검색 실패: {e}", ephemeral=True)
-        return
-    voice.play(discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS))
-    await interaction.response.send_message(f"🎵 검색어 '{query}' 재생: {title}", ephemeral=True)
-    await asyncio.sleep(10)
-    await interaction.delete_original_response()
-
-# ────────────── 정지 명령어 ──────────────
-@tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
-async def stop_radio(interaction: discord.Interaction):
-    voice = interaction.guild.voice_client
-    if voice and voice.is_connected():
-        voice.stop()
-        await voice.disconnect()
-        await interaction.response.send_message("🛑 재생 중지!", ephemeral=True)
-        await asyncio.sleep(10)
-        await interaction.delete_original_response()
-    else:
-        await interaction.response.send_message("🤔 재생 중이 아니에요!", ephemeral=True)
-        await asyncio.sleep(10)
-        await interaction.delete_original_response()
-
-# ────────────── 봇 준비 이벤트 ──────────────
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
     guild = client.get_guild(GUILD_ID)
-    if not guild:
-        print(f"❌ 서버를 찾을 수 없습니다. GUILD_ID 확인 필요: {GUILD_ID}")
-        return
-    await tree.sync(guild=guild)
-    print("✅ Slash Commands Synced")
-    for cmd in await tree.fetch_commands(guild=guild):
-        print("Registered command:", cmd.name)
-
-    if check_first_run(GUILD_ID):
-        channel = guild.get_channel(CHANNEL_ID)
-        if channel:
-            await channel.send(
-                "📡✨ **라디오봇 접속 완료!**\n"
-                "🎶 음성 채널에 들어간 후 아래 명령어 사용 가능\n\n"
-                "▶ `/mbc표준fm` : MBC 표준FM 재생\n"
-                "▶ `/mbcfm4u` : MBC FM4U 재생\n"
-                "▶ `/sbs러브fm` : SBS 러브FM 재생\n"
-                "▶ `/sbs파워fm` : SBS 파워FM 재생\n"
-                "▶ `/cbs음악fm` : CBS 음악FM 재생\n"
-                "▶ `/youtube_play` : 유튜브 링크 재생\n"
-                "▶ `/youyube_검색` : 키워드 검색 자동 재생\n"
-                "⛔ `/정지` : 재생 중지 + 음성채널 퇴장\n"
-                "👂 음성 수신 비활성(Deafened) 상태로 작동"
-            )
-            mark_initialized(GUILD_ID)
+    if guild:
+        await tree.sync(guild=guild)
+        print("✅ Slash Commands Synced")
+        for cmd in await tree.fetch_commands(guild=guild):
+            print("Registered command:", cmd.name)
+        if check_first_run(GUILD_ID):
+            channel = guild.get_channel(CHANNEL_ID)
+            if channel:
+                await channel.send(
+                    "📡✨ **라디오봇 접속 완료!**\n"
+                    "🎶 음성 채널에 먼저 들어가신 후 아래 명령어를 사용해주세요!\n\n"
+                    "▶ `/mbc_sfm` : MBC 표준FM 재생\n"
+                    "▶ `/mbc_fm4u` : MBC FM4U 재생\n"
+                    "▶ `/sbs_love` : SBS 러브FM 재생\n"
+                    "▶ `/sbs_power` : SBS 파워FM 재생\n"
+                    "▶ `/cbs_music` : CBS 음악FM 재생\n"
+                    "▶ `/ytplay [링크]` : YouTube 링크 재생\n"
+                    "▶ `/ytsearch [검색어]` : YouTube 검색 후 자동 재생\n"
+                    "▶ `/stop` : 재생 중지 + 음성 채널 나가기\n\n"
+                    "👂 음성 수신은 비활성화 상태(Deafened)로 작동합니다!"
+                )
+                mark_initialized(GUILD_ID)
 
 client.run(TOKEN)
