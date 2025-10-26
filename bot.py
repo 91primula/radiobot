@@ -121,7 +121,7 @@ async def cmd_yt_search(interaction: discord.Interaction, query: str):
 # -------------------------------
 # 정지 명령어
 # -------------------------------
-@tree.command(name="stop", description="라디오/YouTube 재생 중지 및 음성채널 나가기")
+@tree.command(name="stop", description="재생 중지 및 음성 채널 나가기")
 async def cmd_stop(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_connected():
@@ -136,23 +136,23 @@ async def cmd_stop(interaction: discord.Interaction):
         await interaction.delete_original_response()
 
 # -------------------------------
-# 봇 시작 시 명령어 초기화 & 안내
+# 봇 시작 시 명령어 초기화 + 안내
 # -------------------------------
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
     guild = client.get_guild(GUILD_ID)
     if guild:
-        # 1️⃣ 기존 명령어 초기화
+        # 1️⃣ 기존 명령어 삭제
         for cmd in await tree.fetch_commands(guild=guild):
             await tree.delete_command(cmd.id, guild=guild)
         print("🗑 기존 명령어 초기화 완료")
 
-        # 2️⃣ 새로운 명령어 Sync
+        # 2️⃣ 최신 명령어 등록
         await tree.sync(guild=guild)
-        print("✅ Slash Commands Synced")
+        print("✅ Slash Commands 최신화 완료")
 
-        # 3️⃣ 등록된 명령어 확인
+        # 3️⃣ 등록 명령어 로그
         for cmd in await tree.fetch_commands(guild=guild):
             print("Registered command:", cmd.name)
 
