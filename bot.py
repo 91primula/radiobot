@@ -38,7 +38,7 @@ tree = app_commands.CommandTree(client)
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
+    'options': '-vn -re'
 }
 
 FIRST_RUN_FILE = "first_run.json"
@@ -64,7 +64,7 @@ def mark_initialized(guild_id):
         json.dump(data, f)
 
 # ────────────────────────────────
-# Voice 연결 보장 함수
+# Voice 연결 보장
 # ────────────────────────────────
 async def ensure_voice(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
@@ -82,16 +82,14 @@ async def ensure_voice(interaction: discord.Interaction):
     return None
 
 # ────────────────────────────────
-# 메시지 삭제 (고정 메시지 제외)
+# 메시지 자동 삭제
 # ────────────────────────────────
-async def clear_channel_messages(channel: discord.TextChannel, delay: int = 5):
+async def delete_response_after(message, delay=5):
     await asyncio.sleep(delay)
-    async for message in channel.history(limit=None):
-        if not message.pinned:
-            try:
-                await message.delete()
-            except Exception as e:
-                print(f"❌ 메시지 삭제 실패: {e}")
+    try:
+        await message.delete()
+    except:
+        pass
 
 # ────────────────────────────────
 # 음원 재생 함수
@@ -105,34 +103,25 @@ async def play_audio(interaction: discord.Interaction, url: str, name: str):
     try:
         voice.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS))
     except discord.ClientException as e:
-        await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
+        msg = await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
+        asyncio.create_task(delete_response_after(msg))
         return
-    await interaction.response.send_message(f"🎵 {name} 재생 중!", ephemeral=True)
-    # 명령어 후 5초 뒤 메시지 삭제
-    asyncio.create_task(clear_channel_messages(interaction.channel, delay=5))
+    msg = await interaction.response.send_message(f"🎵 {name} 재생 중!", ephemeral=True)
+    asyncio.create_task(delete_response_after(msg))
 
 # ────────────────────────────────
-# 라디오 명령어
+# 라디오 재생 공통 함수
 # ────────────────────────────────
-@tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
-async def mbc_sfm(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
+def radio_command(name, key):
+    async def command(interaction: discord.Interaction):
+        await play_audio(interaction, RADIO_URLS[key], name)
+    return command
 
-@tree.command(name="mbcfm4u", description="MBC FM4U 재생")
-async def mbc_fm4u(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
-
-@tree.command(name="sbs러브fm", description="SBS 러브FM 재생")
-async def sbs_love(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
-
-@tree.command(name="sbs파워fm", description="SBS 파워FM 재생")
-async def sbs_power(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
-
-@tree.command(name="cbs음악fm", description="CBS 음악FM 재생")
-async def cbs_music(interaction: discord.Interaction):
-    await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
+tree.command(name="mbc표준fm", description="MBC 표준FM 재생")(radio_command("MBC 표준FM", "mbc_sfm"))
+tree.command(name="mbcfm4u", description="MBC FM4U 재생")(radio_command("MBC FM4U", "mbc_fm4u"))
+tree.command(name="sbs러브fm", description="SBS 러브FM 재생")(radio_command("SBS 러브FM", "sbs_love"))
+tree.command(name="sbs파워fm", description="SBS 파워FM 재생")(radio_command("SBS 파워FM", "sbs_power"))
+tree.command(name="cbs음악fm", description="CBS 음악FM 재생")(radio_command("CBS 음악FM", "cbs_music"))
 
 # ────────────────────────────────
 # YouTube 링크 재생
@@ -152,11 +141,12 @@ async def youtube_play(interaction: discord.Interaction, url: str):
             audio_url = info['url']
             title = info.get('title','Unknown')
     except Exception as e:
-        await interaction.response.send_message(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
+        msg = await interaction.response.send_message(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
+        asyncio.create_task(delete_response_after(msg))
         return
     voice.play(discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS))
-    await interaction.response.send_message(f"🎵 YouTube 재생 시작: {title}", ephemeral=True)
-    asyncio.create_task(clear_channel_messages(interaction.channel, delay=5))
+    msg = await interaction.response.send_message(f"🎵 YouTube 재생 시작: {title}", ephemeral=True)
+    asyncio.create_task(delete_response_after(msg))
 
 # ────────────────────────────────
 # YouTube 검색 재생
@@ -175,16 +165,18 @@ async def youtube_search(interaction: discord.Interaction, query: str):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_url, download=False)
             if not info['entries']:
-                await interaction.response.send_message("❌ 검색 결과가 없습니다.", ephemeral=True)
+                msg = await interaction.response.send_message("❌ 검색 결과가 없습니다.", ephemeral=True)
+                asyncio.create_task(delete_response_after(msg))
                 return
             audio_url = info['entries'][0]['url']
             title = info['entries'][0].get('title','Unknown')
     except Exception as e:
-        await interaction.response.send_message(f"❌ 검색 실패: {e}", ephemeral=True)
+        msg = await interaction.response.send_message(f"❌ 검색 실패: {e}", ephemeral=True)
+        asyncio.create_task(delete_response_after(msg))
         return
     voice.play(discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS))
-    await interaction.response.send_message(f"🎵 검색어 '{query}' 재생: {title}", ephemeral=True)
-    asyncio.create_task(clear_channel_messages(interaction.channel, delay=5))
+    msg = await interaction.response.send_message(f"🎵 검색어 '{query}' 재생: {title}", ephemeral=True)
+    asyncio.create_task(delete_response_after(msg))
 
 # ────────────────────────────────
 # 재생 정지
@@ -195,11 +187,11 @@ async def stop_radio(interaction: discord.Interaction):
     if voice and voice.is_connected():
         voice.stop()
         await voice.disconnect()
-        await interaction.response.send_message("🛑 재생 중지!", ephemeral=True)
-        asyncio.create_task(clear_channel_messages(interaction.channel, delay=5))
+        msg = await interaction.response.send_message("🛑 재생 중지!", ephemeral=True)
+        asyncio.create_task(delete_response_after(msg))
     else:
-        await interaction.response.send_message("🤔 재생 중이 아니에요!", ephemeral=True)
-        asyncio.create_task(clear_channel_messages(interaction.channel, delay=5))
+        msg = await interaction.response.send_message("🤔 재생 중이 아니에요!", ephemeral=True)
+        asyncio.create_task(delete_response_after(msg))
 
 # ────────────────────────────────
 # 봇 준비 이벤트
