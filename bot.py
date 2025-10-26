@@ -141,22 +141,30 @@ async def cmd_stop(interaction: discord.Interaction):
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
+
+    # 1️⃣ 글로벌 명령어 삭제
+    global_cmds = await tree.fetch_commands()
+    for cmd in global_cmds:
+        await tree.delete_command(cmd.id)
+    print("🗑 글로벌 명령어 초기화 완료")
+
+    # 2️⃣ Guild 명령어 삭제
     guild = client.get_guild(GUILD_ID)
     if guild:
-        # 1️⃣ 기존 명령어 삭제
-        for cmd in await tree.fetch_commands(guild=guild):
+        guild_cmds = await tree.fetch_commands(guild=guild)
+        for cmd in guild_cmds:
             await tree.delete_command(cmd.id, guild=guild)
-        print("🗑 기존 명령어 초기화 완료")
+        print("🗑 Guild 명령어 초기화 완료")
 
-        # 2️⃣ 최신 명령어 등록
+        # 3️⃣ 최신 명령어 등록
         await tree.sync(guild=guild)
         print("✅ Slash Commands 최신화 완료")
 
-        # 3️⃣ 등록 명령어 로그
+        # 4️⃣ 등록 명령어 로그
         for cmd in await tree.fetch_commands(guild=guild):
             print("Registered command:", cmd.name)
 
-        # 4️⃣ 최초 접속 안내
+        # 5️⃣ 최초 접속 안내
         if check_first_run(GUILD_ID):
             channel = guild.get_channel(CHANNEL_ID)
             if channel:
