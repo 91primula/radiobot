@@ -4,6 +4,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
+import json
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -28,8 +29,27 @@ FFMPEG_OPTIONS = {
     "options": "-vn"
 }
 
+FIRST_RUN_FILE = "first_run.json"
+
+def check_first_run(guild_id):
+    if not os.path.exists(FIRST_RUN_FILE):
+        return True
+    with open(FIRST_RUN_FILE, "r") as f:
+        data = json.load(f)
+    return str(guild_id) not in data.get("initialized", [])
+
+def mark_initialized(guild_id):
+    data = {"initialized": []}
+    if os.path.exists(FIRST_RUN_FILE):
+        with open(FIRST_RUN_FILE, "r") as f:
+            data = json.load(f)
+    if str(guild_id) not in data.get("initialized", []):
+        data["initialized"].append(str(guild_id))
+    with open(FIRST_RUN_FILE, "w") as f:
+        json.dump(data, f)
+
 # -------------------------------
-# 오디오 재생 함수
+# 오디오 재생
 # -------------------------------
 async def play_audio(interaction: discord.Interaction, url: str, name: str):
     voice = interaction.guild.voice_client
@@ -48,9 +68,6 @@ async def play_audio(interaction: discord.Interaction, url: str, name: str):
     await asyncio.sleep(10)
     await interaction.delete_original_response()
 
-# -------------------------------
-# YouTube 링크 재생
-# -------------------------------
 async def play_youtube(interaction: discord.Interaction, url: str):
     ydl_opts = {"format": "bestaudio"}
     with YoutubeDL(ydl_opts) as ydl:
@@ -58,9 +75,6 @@ async def play_youtube(interaction: discord.Interaction, url: str):
         audio_url = info['url']
     await play_audio(interaction, audio_url, info.get('title', 'YouTube'))
 
-# -------------------------------
-# YouTube 검색 후 재생
-# -------------------------------
 async def search_youtube(interaction: discord.Interaction, query: str):
     ydl_opts = {"format": "bestaudio", "default_search": "ytsearch", "noplaylist": True}
     with YoutubeDL(ydl_opts) as ydl:
@@ -122,37 +136,27 @@ async def cmd_stop(interaction: discord.Interaction):
         await interaction.delete_original_response()
 
 # -------------------------------
-# 최초 접속 안내
+# 봇 시작 시 명령어 초기화 & 안내
 # -------------------------------
-FIRST_RUN_FILE = "first_run.json"
-import json
-
-def check_first_run(guild_id):
-    if not os.path.exists(FIRST_RUN_FILE):
-        return True
-    with open(FIRST_RUN_FILE, "r") as f:
-        data = json.load(f)
-    return str(guild_id) not in data.get("initialized", [])
-
-def mark_initialized(guild_id):
-    data = {"initialized": []}
-    if os.path.exists(FIRST_RUN_FILE):
-        with open(FIRST_RUN_FILE, "r") as f:
-            data = json.load(f)
-    if str(guild_id) not in data.get("initialized", []):
-        data["initialized"].append(str(guild_id))
-    with open(FIRST_RUN_FILE, "w") as f:
-        json.dump(data, f)
-
 @client.event
 async def on_ready():
     print(f"✅ Login: {client.user}")
     guild = client.get_guild(GUILD_ID)
     if guild:
+        # 1️⃣ 기존 명령어 초기화
+        for cmd in await tree.fetch_commands(guild=guild):
+            await tree.delete_command(cmd.id, guild=guild)
+        print("🗑 기존 명령어 초기화 완료")
+
+        # 2️⃣ 새로운 명령어 Sync
         await tree.sync(guild=guild)
         print("✅ Slash Commands Synced")
+
+        # 3️⃣ 등록된 명령어 확인
         for cmd in await tree.fetch_commands(guild=guild):
             print("Registered command:", cmd.name)
+
+        # 4️⃣ 최초 접속 안내
         if check_first_run(GUILD_ID):
             channel = guild.get_channel(CHANNEL_ID)
             if channel:
