@@ -151,7 +151,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
     await interaction.delete_original_response()
 
 # ────────────── 정지 명령어 ──────────────
-@tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
+@tree.command(name="STOP", description="재생 중지 + 음성채널 퇴장")
 async def stop_radio(interaction: discord.Interaction):
     voice = interaction.guild.voice_client
     if voice and voice.is_connected():
