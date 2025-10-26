@@ -32,6 +32,8 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
+queues = {}  # {guild_id: [ {url, title}, ... ]}
+
 FIRST_RUN_FILE = "first_run.json"
 
 def check_first_run(guild_id):
@@ -53,11 +55,12 @@ def mark_initialized(guild_id):
 
 # ──────────────── 버튼 UI 클래스 ────────────────
 class AudioControlView(discord.ui.View):
-    def __init__(self, voice: discord.VoiceClient, message: discord.Message, name: str):
+    def __init__(self, voice: discord.VoiceClient, message: discord.Message, name: str, guild_id: int):
         super().__init__(timeout=None)
         self.voice = voice
         self.message = message
         self.name = name
+        self.guild_id = guild_id
 
     async def update_message(self, status: str):
         embed = discord.Embed(title=f"🎵 {self.name}", description=f"상태: {status}", color=0x1abc9c)
@@ -99,7 +102,6 @@ class AudioControlView(discord.ui.View):
             await asyncio.sleep(5)
             await interaction.delete_original_response()
 
-            # 메시지 삭제 (기존 로직 그대로)
             channel = client.get_channel(CHANNEL_ID)
             if channel:
                 pinned = [msg.id async for msg in channel.pins()]
@@ -111,29 +113,54 @@ class AudioControlView(discord.ui.View):
             await asyncio.sleep(5)
             await interaction.delete_original_response()
 
-# ──────────────── 오디오 재생 함수 ────────────────
-async def play_audio(interaction, url, name):
+    @discord.ui.button(label="재생리스트", style=discord.ButtonStyle.blurple)
+    async def queue_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        q = queues.get(self.guild_id, [])
+        if not q:
+            desc = "다음 재생 예정이 없습니다."
+        else:
+            desc = "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(q)])
+        embed = discord.Embed(title="📜 재생 목록", description=desc, color=0xf1c40f)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await asyncio.sleep(10)
+        await interaction.delete_original_response()
+
+# ──────────────── 유튜브 전용 재생 함수 ────────────────
+async def play_next_track(guild):
+    guild_id = guild.id
+    voice = guild.voice_client
+    if not voice or not queues.get(guild_id):
+        return
+    next_track = queues[guild_id].pop(0)
+    source = discord.FFmpegOpusAudio(next_track["url"], **FFMPEG_OPTIONS)
+    def after_play(error):
+        fut = asyncio.run_coroutine_threadsafe(play_next_track(guild), client.loop)
+        try:
+            fut.result()
+        except:
+            pass
+    voice.play(source, after=after_play)
+
+    # 메시지 + 버튼 UI 갱신
+    embed = discord.Embed(title=f"🎵 YouTube: {next_track['title']}", description="상태: ▶ 재생 중", color=0x1abc9c)
+    msg = await client.get_channel(CHANNEL_ID).send(embed=embed)
+    view = AudioControlView(voice, msg, next_track['title'], guild_id)
+    await msg.edit(view=view)
+
+async def enqueue_youtube(interaction, url, title):
+    guild_id = interaction.guild.id
+    if guild_id not in queues:
+        queues[guild_id] = []
+    queues[guild_id].append({"url": url, "title": title})
+    await interaction.followup.send(f"✅ '{title}' 큐에 추가됨", ephemeral=True)
+
     voice = interaction.guild.voice_client
     if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
         channel = interaction.user.voice.channel
         voice = await channel.connect(self_deaf=True)
-    if voice.is_playing():
-        voice.stop()
-    try:
-        voice.play(discord.FFmpegOpusAudio(url, **FFMPEG_OPTIONS))
-    except Exception as e:
-        await interaction.followup.send(f"❌ 재생 실패: {e}", ephemeral=True)
-        return
 
-    # 메시지 + 버튼 UI 전송
-    embed = discord.Embed(title=f"🎵 {name}", description="상태: ▶ 재생 중", color=0x1abc9c)
-    await interaction.followup.send(embed=embed, ephemeral=False)
-    message = await interaction.original_response()
-    view = AudioControlView(voice, message, name)
-    await message.edit(view=view)
+    if not voice.is_playing():
+        await play_next_track(interaction.guild)
 
 # ──────────────── 라디오 명령어 ────────────────
 @tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
@@ -166,15 +193,6 @@ async def cbs_music(interaction: discord.Interaction):
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
-    voice = interaction.guild.voice_client
-    if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
-        channel = interaction.user.voice.channel
-        voice = await channel.connect(self_deaf=True)
-    if voice.is_playing():
-        voice.stop()
     ydl_opts = {'format': 'bestaudio/best', 'quiet': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -184,21 +202,12 @@ async def youtube_play(interaction: discord.Interaction, url: str):
     except Exception as e:
         await interaction.followup.send(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
         return
-    await play_audio(interaction, audio_url, f"YouTube: {title}")
+    await enqueue_youtube(interaction, audio_url, title)
 
 @tree.command(name="youtube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
-    voice = interaction.guild.voice_client
-    if not voice:
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
-            return
-        channel = interaction.user.voice.channel
-        voice = await channel.connect(self_deaf=True)
-    if voice.is_playing():
-        voice.stop()
     ydl_opts = {'format': 'bestaudio/best', 'quiet': True}
     search_url = f"ytsearch1:{query}"
     try:
@@ -211,7 +220,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
     except Exception as e:
         await interaction.followup.send(f"❌ 검색 실패: {e}", ephemeral=True)
         return
-    await play_audio(interaction, audio_url, f"YouTube: {title}")
+    await enqueue_youtube(interaction, audio_url, title)
 
 
 
