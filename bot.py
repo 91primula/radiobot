@@ -162,7 +162,7 @@ async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
 # ──────────────── 유튜브 재생 ────────────────
-@tree.command(name="youtube_play", description="URL 링크 이용 유튜브 링크 재생")
+@tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
     await interaction.response.defer()
@@ -186,7 +186,7 @@ async def youtube_play(interaction: discord.Interaction, url: str):
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
 
-@tree.command(name="youtube_검색", description="키워드 검색어 이용 재생/검색 후 첫 영상을 재생함")
+@tree.command(name="youtube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
@@ -212,6 +212,7 @@ async def youtube_search(interaction: discord.Interaction, query: str):
         await interaction.followup.send(f"❌ 검색 실패: {e}", ephemeral=True)
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
+
 
 
 
