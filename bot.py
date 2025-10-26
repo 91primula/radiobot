@@ -116,7 +116,7 @@ async def play_audio(interaction, url, name):
     voice = interaction.guild.voice_client
     if not voice:
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
+            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
             return
         channel = interaction.user.voice.channel
         voice = await channel.connect(self_deaf=True)
@@ -125,49 +125,51 @@ async def play_audio(interaction, url, name):
     try:
         voice.play(discord.FFmpegOpusAudio(url, **FFMPEG_OPTIONS))
     except Exception as e:
-        await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 재생 실패: {e}", ephemeral=True)
         return
 
-    # interaction defer → NotFound 오류 방지
-    try:
-        await interaction.response.defer()
-    except discord.errors.InteractionResponded:
-        pass
-
+    # 메시지 + 버튼 UI 전송
     embed = discord.Embed(title=f"🎵 {name}", description="상태: ▶ 재생 중", color=0x1abc9c)
     await interaction.followup.send(embed=embed, ephemeral=False)
     message = await interaction.original_response()
     view = AudioControlView(voice, message, name)
     await message.edit(view=view)
 
-# ──────────────── 라디오/유튜브 명령어 ────────────────
+# ──────────────── 라디오 명령어 ────────────────
 @tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
 async def mbc_sfm(interaction: discord.Interaction):
+    await interaction.response.defer()
     await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
 
 @tree.command(name="mbcfm4u", description="MBC FM4U 재생")
 async def mbc_fm4u(interaction: discord.Interaction):
+    await interaction.response.defer()
     await play_audio(interaction, RADIO_URLS["mbc_fm4u"], "MBC FM4U")
 
 @tree.command(name="sbs러브fm", description="SBS 러브FM 재생")
 async def sbs_love(interaction: discord.Interaction):
+    await interaction.response.defer()
     await play_audio(interaction, RADIO_URLS["sbs_love"], "SBS 러브FM")
 
 @tree.command(name="sbs파워fm", description="SBS 파워FM 재생")
 async def sbs_power(interaction: discord.Interaction):
+    await interaction.response.defer()
     await play_audio(interaction, RADIO_URLS["sbs_power"], "SBS 파워FM")
 
 @tree.command(name="cbs음악fm", description="CBS 음악FM 재생")
 async def cbs_music(interaction: discord.Interaction):
+    await interaction.response.defer()
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
+# ──────────────── 유튜브 재생 ────────────────
 @tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
+    await interaction.response.defer()
     voice = interaction.guild.voice_client
     if not voice:
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
+            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
             return
         channel = interaction.user.voice.channel
         voice = await channel.connect(self_deaf=True)
@@ -180,17 +182,18 @@ async def youtube_play(interaction: discord.Interaction, url: str):
             audio_url = info['url']
             title = info.get('title', 'Unknown')
     except Exception as e:
-        await interaction.response.send_message(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 유튜브 링크 처리 실패: {e}", ephemeral=True)
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
 
 @tree.command(name="youtube_검색", description="검색어 입력 시 유튜브에서 찾아 자동 재생")
 @app_commands.describe(query="재생할 음악/영상 검색어")
 async def youtube_search(interaction: discord.Interaction, query: str):
+    await interaction.response.defer()
     voice = interaction.guild.voice_client
     if not voice:
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
+            await interaction.followup.send("⚠ 먼저 음성채널에 들어가세요!", ephemeral=True)
             return
         channel = interaction.user.voice.channel
         voice = await channel.connect(self_deaf=True)
@@ -206,11 +209,10 @@ async def youtube_search(interaction: discord.Interaction, query: str):
             audio_url = info['entries'][0]['url']
             title = info['entries'][0].get('title', 'Unknown')
     except Exception as e:
-        await interaction.response.send_message(f"❌ 검색 실패: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 검색 실패: {e}", ephemeral=True)
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
 
-# 나머지 기존 정지, 메시지 삭제, 음성 상태 이벤트 등 그대로 유지
 
 
 
