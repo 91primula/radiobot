@@ -13,10 +13,10 @@ GUILD_ID = int(os.getenv("GUILD_ID"))
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 RADIO_URLS = {
-    "mbc_sfm": "https://minisw.imbc.com/dsfm/_definst_/sfm.stream/playlist.m3u8?...",
-    "mbc_fm4u": "https://minimw.imbc.com/dmfm/_definst_/mfm.stream/playlist.m3u8?...",
-    "sbs_love": "https://radiolive.sbs.co.kr/lovepc/lovefm.stream/playlist.m3u8?...",
-    "sbs_power": "https://radiolive.sbs.co.kr/powerpc/powerfm.stream/playlist.m3u8?...",
+    "mbc_sfm": "https://minisw.imbc.com/dsfm/_definst_/sfm.stream/playlist.m3u8?_lsu_sa_=68417D1F03383B546B4B355634C1224D15523A156D0F228B3B90FBaA96903A16A2a823873872C84080893F11F0bE91F6CB2A971CE3ECD9B4DC7549119B51B26017DDF53E85C690DFAF09F6DA48D13B4A89D5FBCFFC7F1AAF6D7BD789F77DDF9FFADD3FC9B59786C49A8AA4ADDD6596B5",
+    "mbc_fm4u": "https://minimw.imbc.com/dmfm/_definst_/mfm.stream/playlist.m3u8?_lsu_sa_=65D1A71893FC30143147252E39C16548E58D34B5010872D137B0F7a086D83CD60Fa1B38E3EC2DF4D90D9369104b83123FC9B8FE0C5C174E6FE6424DF2921ED8DD2B5E720620BE2FCC2E39DC8C719D14DA48C98E1985E4F15BF5B639B3C26EAC9D2AAC0B6CDC2F0D8ACBF82AA0EE9012A",
+    "sbs_love": "https://radiolive.sbs.co.kr/lovepc/lovefm.stream/playlist.m3u8?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjE0ODc1NDMsInBhdGgiOiIvbG92ZWZtLnN0cmVhbSIsImR1cmF0aW9uIjotMSwidW5vIjoiMDA5YmIyYjgtNWVmMy00NjIyLWIxNmYtNWYwZTRmZmZlMzU1IiwiaWF0IjoxNzYxNDQ0MzQzfQ.xz5ULyKd13LLFQ471XkdcfpxOLrlqlFwFvlrGlSI8bo",
+    "sbs_power": "https://radiolive.sbs.co.kr/powerpc/powerfm.stream/playlist.m3u8?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NjE0ODc1MjMsInBhdGgiOiIvcG93ZXJmbS5zdHJlYW0iLCJkdXJhdGlvbiI6LTEsInVubyI6Ijk5Y2ZkMGUxLWVkMzMtNGJkYy05ODJlLTE1OWYwYWZjMDU1MSIsImlhdCI6MTc2MTQ0NDMyM30.HO7sQfgcaPN25yNKDEMufzz6RJ4KBIPLtVsPJZ9GRww",
     "cbs_music": "https://m-aac.cbs.co.kr/mweb_cbs939/_definst_/cbs939.stream/chunklist.m3u8"
 }
 
@@ -60,7 +60,6 @@ class AudioControlView(discord.ui.View):
         self.name = name
 
     async def update_message(self, status: str):
-        # 메시지 내용 그대로 유지, embed만 상태 업데이트
         embed = discord.Embed(title=f"🎵 {self.name}", description=f"상태: {status}", color=0x1abc9c)
         await self.message.edit(embed=embed, view=self)
 
@@ -99,7 +98,8 @@ class AudioControlView(discord.ui.View):
             await interaction.response.send_message("🛑 재생 중지!", ephemeral=True)
             await asyncio.sleep(5)
             await interaction.delete_original_response()
-            # 기존 메시지 삭제
+
+            # 메시지 삭제 (기존 로직 그대로)
             channel = client.get_channel(CHANNEL_ID)
             if channel:
                 pinned = [msg.id async for msg in channel.pins()]
@@ -128,14 +128,14 @@ async def play_audio(interaction, url, name):
         await interaction.response.send_message(f"❌ 재생 실패: {e}", ephemeral=True)
         return
 
-    # 기존 메시지 전송 방식 그대로 유지, view만 추가
+    # 기존 메시지 전송 + View 연결
     embed = discord.Embed(title=f"🎵 {name}", description="상태: ▶ 재생 중", color=0x1abc9c)
-    message = await interaction.response.send_message(embed=embed, ephemeral=False)
-    message = await message.original_response()
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+    message = await interaction.original_response()
     view = AudioControlView(voice, message, name)
     await message.edit(view=view)
 
-# ──────────────── 라디오 명령어 ────────────────
+# ──────────────── 라디오/유튜브 명령어 ────────────────
 @tree.command(name="mbc표준fm", description="MBC 표준FM 재생")
 async def mbc_sfm(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["mbc_sfm"], "MBC 표준FM")
@@ -156,7 +156,6 @@ async def sbs_power(interaction: discord.Interaction):
 async def cbs_music(interaction: discord.Interaction):
     await play_audio(interaction, RADIO_URLS["cbs_music"], "CBS 음악FM")
 
-# ──────────────── YouTube 명령어 ────────────────
 @tree.command(name="youtube_play", description="유튜브 링크 재생")
 @app_commands.describe(url="재생할 유튜브 영상 링크")
 async def youtube_play(interaction: discord.Interaction, url: str):
@@ -205,6 +204,9 @@ async def youtube_search(interaction: discord.Interaction, query: str):
         await interaction.response.send_message(f"❌ 검색 실패: {e}", ephemeral=True)
         return
     await play_audio(interaction, audio_url, f"YouTube: {title}")
+
+# 나머지 정지/메시지 삭제/음성 상태 이벤트 등 기존 코드 그대로 유지
+
 
 # ──────────────── 정지 + 메시지 삭제 ────────────────
 @tree.command(name="정지", description="재생 중지 + 음성채널 퇴장")
